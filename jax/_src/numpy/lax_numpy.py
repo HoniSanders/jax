@@ -669,11 +669,12 @@ def _select_mode_for_lags(N: int, M: int,
   lags will be zero-padded by the caller).
   """
   m0, m1, step = lag_tuple
-  lag_values = builtins.range(m0, m1, step)
-  if not lag_values:
-    return 'valid'
-  min_req = builtins.min(lag_values[0], lag_values[-1])
-  max_req = builtins.max(lag_values[0], lag_values[-1])
+  if (step > 0 and m0 >= m1) or (step < 0 and m0 <= m1):
+    return 'valid'  # empty
+  # last element of range(m0, m1, step), without materializing the range
+  last = m0 + ((m1 - m0 - (1 if step > 0 else -1)) // step) * step
+  min_req = builtins.min(m0, last)
+  max_req = builtins.max(m0, last)
   for mode in ('valid', 'same', 'full'):
     s, e = _mode_lag_range(N, M, mode)
     if s <= min_req and max_req <= e:
