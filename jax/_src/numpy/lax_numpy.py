@@ -682,26 +682,32 @@ def _select_mode_for_lags(N: int, M: int,
   return 'full'
 
 
-def _slice_to_lags(arr: Array, start_lag: int,
+def _slice_with_lags(arr: Array, mode_output_start: int,
                    lag_tuple: tuple[int, int, int]) -> Array:
-  """Slice ``arr`` (where ``arr[k]`` corresponds to lag ``k + start_lag``).
+  """Slice ``arr`` (the output of a mode-based correlate/convolve) to the
+  user-requested lag range.
 
-  Lags outside the range covered by ``arr`` yield zeros.
+  ``mode_output_start`` is the lag (offset of ``v`` relative to ``a``)
+  corresponding to ``arr[0]``: e.g. ``-(M-1)`` for ``'full'`` or ``0`` for
+  ``'valid'`` when ``N >= M``.  ``lag_tuple = (m0, m1, step)`` is the
+  user-requested ``range(m0, m1, step)`` of output lags.  Requested lags
+  outside the range covered by ``arr`` yield zeros.
   """
   m0, m1, step = lag_tuple
   lag_values = builtins.range(m0, m1, step)
   if not lag_values:
     return arr[0:0]
   arr_len = arr.shape[0]
-  end_lag = start_lag + arr_len - 1
+  end_lag = mode_output_start + arr_len - 1
   min_req = builtins.min(lag_values[0], lag_values[-1])
   max_req = builtins.max(lag_values[0], lag_values[-1])
-  pad_left = builtins.max(0, start_lag - min_req)
+  pad_left = builtins.max(0, mode_output_start - min_req)
   pad_right = builtins.max(0, max_req - end_lag)
   if pad_left or pad_right:
     arr = pad(arr, (pad_left, pad_right))
-  indices = np.fromiter((L - start_lag + pad_left for L in lag_values),
-                        dtype=np.int64, count=len(lag_values))
+  indices = np.fromiter(
+      (L - mode_output_start + pad_left for L in lag_values),
+      dtype=np.int64, count=len(lag_values))
   return arr[indices]
 
 
@@ -804,7 +810,7 @@ def convolve(a: ArrayLike, v: ArrayLike, mode: str = 'full', *,
   chosen = _select_mode_for_lags(N, M, lag_tuple)
   out = _conv(a, v, mode=chosen, op='convolve',
               precision=precision, preferred_element_type=preferred_element_type)
-  return _slice_to_lags(out, _mode_lag_range(N, M, chosen)[0], lag_tuple)
+  return _slice_with_lags(out, _mode_lag_range(N, M, chosen)[0], lag_tuple)
 
 
 @export
@@ -917,7 +923,7 @@ def correlate(a: ArrayLike, v: ArrayLike, mode: str = 'valid', *,
   chosen = _select_mode_for_lags(N, M, lag_tuple)
   out = _conv(a, v, mode=chosen, op='correlate',
               precision=precision, preferred_element_type=preferred_element_type)
-  return _slice_to_lags(out, _mode_lag_range(N, M, chosen)[0], lag_tuple)
+  return _slice_with_lags(out, _mode_lag_range(N, M, chosen)[0], lag_tuple)
 
 
 @export
