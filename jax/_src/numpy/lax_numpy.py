@@ -694,21 +694,18 @@ def _slice_with_lags(arr: Array, mode_output_start: int,
   outside the range covered by ``arr`` yield zeros.
   """
   m0, m1, step = lag_tuple
-  lag_values = builtins.range(m0, m1, step)
-  if not lag_values:
+  indices = np.arange(m0, m1, step, dtype=np.int64)
+  if indices.size == 0:
     return arr[0:0]
-  arr_len = arr.shape[0]
-  end_lag = mode_output_start + arr_len - 1
-  min_req = builtins.min(lag_values[0], lag_values[-1])
-  max_req = builtins.max(lag_values[0], lag_values[-1])
+  first, last = int(indices[0]), int(indices[-1])
+  min_req = builtins.min(first, last)
+  max_req = builtins.max(first, last)
+  end_lag = mode_output_start + arr.shape[0] - 1
   pad_left = builtins.max(0, mode_output_start - min_req)
   pad_right = builtins.max(0, max_req - end_lag)
   if pad_left or pad_right:
     arr = pad(arr, (pad_left, pad_right))
-  indices = np.fromiter(
-      (L - mode_output_start + pad_left for L in lag_values),
-      dtype=np.int64, count=len(lag_values))
-  return arr[indices]
+  return arr[indices - mode_output_start + pad_left]
 
 
 @export
@@ -738,8 +735,8 @@ def convolve(a: ArrayLike, v: ArrayLike, mode: str = 'full', *,
       * ``"valid"``: return the portion of the ``"full"`` output which do not
         depend on padding at the array edges.
       * ``"lags"``: return the convolution at the lag indices specified by
-        ``maxlag`` or ``lags``.  When ``maxlag`` or ``lags`` is given and
-        ``mode`` is omitted, ``mode`` defaults to ``"lags"``.
+        ``maxlag`` or ``lags``.  When ``maxlag`` or ``lags`` is provided,
+        ``mode`` must be either ``"full"`` (the default) or ``"lags"``.
 
     maxlag: if given, compute the convolution at lags
       ``-maxlag, -maxlag+1, ..., maxlag`` (a symmetric inclusive window of
@@ -842,8 +839,8 @@ def correlate(a: ArrayLike, v: ArrayLike, mode: str = 'valid', *,
       * ``"valid"``: (default) return the portion of the ``"full"`` output which do not
         depend on padding at the array edges.
       * ``"lags"``: return the cross-correlation at the lag indices specified
-        by ``maxlag`` or ``lags``.  When ``maxlag`` or ``lags`` is given and
-        ``mode`` is omitted, ``mode`` defaults to ``"lags"``.
+        by ``maxlag`` or ``lags``.  When ``maxlag`` or ``lags`` is provided,
+        ``mode`` must be either ``"valid"`` (the default) or ``"lags"``.
 
     maxlag: if given, compute the cross-correlation at lags
       ``-maxlag, -maxlag+1, ..., maxlag`` (a symmetric inclusive window of
@@ -962,8 +959,6 @@ def correlation_lags(a_len: int, v_len: int, mode: str | None = None, *,
     >>> jnp.correlation_lags(5, 3, maxlag=2)
     Array([-2, -1,  0,  1,  2], dtype=int32)
   """
-  if maxlag is not None and lags is not None:
-    raise TypeError("cannot specify both maxlag and lags")
   lags_given = maxlag is not None or lags is not None
   if mode is None:
     mode = 'lags' if lags_given else 'valid'
@@ -976,8 +971,7 @@ def correlation_lags(a_len: int, v_len: int, mode: str | None = None, *,
   if mode == 'lags':
     if not lags_given:
       raise ValueError("maxlag or lags is required for mode='lags'")
-    m0, m1, step = (_lags_from_maxlag(maxlag) if maxlag is not None
-                    else _lags_from_lags(lags))
+    m0, m1, step = _resolve_lag_tuple('lags', maxlag, lags, default_mode='lags')
     return arange(m0, m1, step)
   raise ValueError("mode must be one of 'valid', 'same', 'full', 'lags'")
 
